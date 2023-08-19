@@ -81,8 +81,9 @@ class InnerNode extends BPlusNode {
     @Override
     public LeafNode get(DataBox key) {
         // TODO(proj2): implement
-
-        return null;
+        int i = numLessThanEqual(key, this.keys);
+        BPlusNode bPlusNode = this.getChild(i);
+        return bPlusNode.get(key);
     }
 
     // See BPlusNode.getLeftmostLeaf.
@@ -90,16 +91,52 @@ class InnerNode extends BPlusNode {
     public LeafNode getLeftmostLeaf() {
         assert(children.size() > 0);
         // TODO(proj2): implement
-
-        return null;
+        BPlusNode bPlusNode = this.getChild(0);
+        return bPlusNode.getLeftmostLeaf();
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        int idx = numLessThanEqual(key, this.keys);
+        BPlusNode bPlusNode = this.getChild(idx);
+        Optional<Pair<DataBox, Long>> res = bPlusNode.put(key, rid);
 
+        if (res.isPresent()) {
+            DataBox splitKey = res.get().getFirst();
+            Long pageNum = res.get().getSecond();
+            this.keys.add(idx, splitKey);
+            this.children.add(idx+1, pageNum);
+
+            int order = this.metadata.getOrder();
+            if (this.keys.size() > 2 * order) {  // overflow: split node
+                return this.splitNode();
+            }
+            sync();
+            return Optional.empty();
+        }
+
+        sync();
         return Optional.empty();
+    }
+
+    private Optional<Pair<DataBox, Long>> splitNode() {
+        int size = this.keys.size();
+        int order = this.metadata.getOrder();
+
+        List<DataBox> leftKeys = this.keys.subList(0, order);
+        List<Long> leftChildren = this.children.subList(0, order+1);
+        List<DataBox> rightKeys = this.keys.subList(order+1, size);
+        List<Long> rightChildren = this.children.subList(order+1, size+1);
+
+        InnerNode rightNode = new InnerNode(this.metadata, this.bufferManager, rightKeys, rightChildren, this.treeContext);
+        DataBox splitKey = this.keys.get(order);
+        Long rightNodePageNum = rightNode.getPage().getPageNum();
+        this.keys = leftKeys;
+        this.children = leftChildren;
+        sync();
+        return Optional.of(new Pair<>(splitKey, rightNodePageNum));
     }
 
     // See BPlusNode.bulkLoad.
@@ -115,8 +152,10 @@ class InnerNode extends BPlusNode {
     @Override
     public void remove(DataBox key) {
         // TODO(proj2): implement
-
-        return;
+        int idx = numLessThanEqual(key, this.keys);
+        BPlusNode bPlusNode = this.getChild(idx);
+        bPlusNode.remove(key);
+        sync();
     }
 
     // Helpers /////////////////////////////////////////////////////////////////
@@ -349,7 +388,7 @@ class InnerNode extends BPlusNode {
 
         List<DataBox> keys = new ArrayList<>();
         List<Long> children = new ArrayList<>();
-        int n = buf.getInt();
+        int n = buf.getInt(); // number of keys n
         for (int i = 0; i < n; ++i) {
             keys.add(DataBox.fromBytes(buf, metadata.getKeySchema()));
         }
