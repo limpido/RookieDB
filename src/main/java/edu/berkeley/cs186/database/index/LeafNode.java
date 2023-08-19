@@ -163,20 +163,24 @@ class LeafNode extends BPlusNode {
         // TODO(proj2): implement
         int order = this.metadata.getOrder();
         int idx = InnerNode.numLessThanEqual(key, this.keys);
+
+        // raise exception for duplicate insert
+        if (this.keys.contains(key))
+            throw new BPlusTreeException("Duplicate puts is not allowed.");
+
         this.keys.add(idx, key);
         this.rids.add(idx, rid);
 
         if (this.keys.size() > 2 * order) {  // overflow: split node
-            return this.splitNode();
+            return this.splitNode(order);
         }
 
         sync();
         return Optional.empty();
     }
 
-    private Optional<Pair<DataBox, Long>> splitNode() {
+    private Optional<Pair<DataBox, Long>> splitNode(int order) {
         int size = this.keys.size();
-        int order = this.metadata.getOrder();
         List<DataBox> leftKeys = this.keys.subList(0, order);
         List<RecordId> leftRids = this.rids.subList(0, order);
         List<DataBox> rightKeys = this.keys.subList(order, size);
@@ -197,7 +201,25 @@ class LeafNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
+        // check fill factor range
+        if (fillFactor <= 0 || fillFactor > 1) {
+            throw new BPlusTreeException("Fill factor should be between 0 and 1.");
+        }
 
+        int order = this.metadata.getOrder();
+        int fillLimit = (int) Math.ceil(fillFactor * order * 2);
+        while (data.hasNext()) {
+            Pair<DataBox, RecordId> entry = data.next();
+            this.keys.add(entry.getFirst());
+            this.rids.add(entry.getSecond());
+
+            int size = this.keys.size();
+            if (size > fillLimit) {
+                return this.splitNode(fillLimit);
+            }
+        }
+
+        sync();
         return Optional.empty();
     }
 

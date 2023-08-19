@@ -257,21 +257,25 @@ public class BPlusTree {
         // Note: You should NOT update the root variable directly.
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
-        Optional<Pair<DataBox, Long>> res = this.root.put(key, rid);
-        if (res.isPresent()) {
-            DataBox splitKey = res.get().getFirst();
-            Long splitPageNum = res.get().getSecond();
-            Long rootPageNum = this.root.getPage().getPageNum();
-
-            List<DataBox> keys = new ArrayList<>();
-            List<Long> children = new ArrayList<>();
-            keys.add(splitKey);
-            children.add(rootPageNum);
-            children.add(splitPageNum);
-
-            BPlusNode newRoot = new InnerNode(this.metadata, this.bufferManager, keys, children, this.lockContext);
-            this.updateRoot(newRoot);
+        Optional<Pair<DataBox, Long>> entry = this.root.put(key, rid);
+        if (entry.isPresent()) {
+            this.splitRoot(entry.get());
         }
+    }
+
+    private void splitRoot(Pair<DataBox, Long> entry) {
+        DataBox splitKey = entry.getFirst();
+        Long splitPageNum = entry.getSecond();
+        Long rootPageNum = this.root.getPage().getPageNum();
+
+        List<DataBox> keys = new ArrayList<>();
+        List<Long> children = new ArrayList<>();
+        keys.add(splitKey);
+        children.add(rootPageNum);
+        children.add(splitPageNum);
+
+        BPlusNode newRoot = new InnerNode(this.metadata, this.bufferManager, keys, children, this.lockContext);
+        this.updateRoot(newRoot);
     }
 
     /**
@@ -302,7 +306,12 @@ public class BPlusTree {
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
 
-        return;
+        // TODO: raise exception is the tree is not empty
+        while (data.hasNext()) {
+            Optional<Pair<DataBox, Long>> splitKeyPair = this.root.bulkLoad(data, fillFactor);
+            if (splitKeyPair.isPresent())
+                this.splitRoot(splitKeyPair.get());
+        }
     }
 
     /**

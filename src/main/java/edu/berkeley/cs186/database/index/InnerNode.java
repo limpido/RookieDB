@@ -145,6 +145,25 @@ class InnerNode extends BPlusNode {
             float fillFactor) {
         // TODO(proj2): implement
 
+        while (data.hasNext()) {
+            BPlusNode rightmostChild = this.getChild(this.children.size()-1);
+            Optional<Pair<DataBox, Long>> splitKeyPair = rightmostChild.bulkLoad(data, fillFactor);
+
+            if (splitKeyPair.isPresent()) {
+                DataBox splitKey = splitKeyPair.get().getFirst();
+                Long pageNum = splitKeyPair.get().getSecond();
+                this.keys.add(splitKey);
+                this.children.add(pageNum);
+
+                int order = this.metadata.getOrder();
+                if (this.keys.size() > 2 * order) {  // overflow: split node
+                    return this.splitNode();
+                }
+                sync();
+            }
+        }
+
+        sync();
         return Optional.empty();
     }
 
