@@ -144,6 +144,10 @@ class InnerNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
+        // check fill factor range
+        if (fillFactor <= 0 || fillFactor > 1) {
+            throw new BPlusTreeException("Fill factor should be between 0 and 1.");
+        }
 
         while (data.hasNext()) {
             BPlusNode rightmostChild = this.getChild(this.children.size()-1);

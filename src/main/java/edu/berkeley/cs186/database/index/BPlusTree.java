@@ -306,7 +306,7 @@ public class BPlusTree {
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
 
-        // TODO: raise exception is the tree is not empty
+        // TODO: raise exception if the tree is not empty
         while (data.hasNext()) {
             Optional<Pair<DataBox, Long>> splitKeyPair = this.root.bulkLoad(data, fillFactor);
             if (splitKeyPair.isPresent())
