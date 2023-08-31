@@ -71,7 +71,18 @@ public class GHJOperator extends JoinOperator {
         // You may find the implementation in SHJOperator.java to be a good
         // starting point. You can use the static method HashFunc.hashDataBox
         // to get a hash value.
-        return;
+        for (Record record: records) {
+            DataBox columnValue;
+            if(left) columnValue = record.getValue(getLeftColumnIndex());
+            else columnValue = record.getValue(getRightColumnIndex());
+
+            int hash = HashFunc.hashDataBox(columnValue, pass);
+            // modulo to get which partition to use
+            int partitionNum = hash % partitions.length;
+            if (partitionNum < 0)  // hash might be negative
+                partitionNum += partitions.length;
+            partitions[partitionNum].add(record);
+        }
     }
 
     /**
@@ -112,6 +123,26 @@ public class GHJOperator extends JoinOperator {
         // You shouldn't refer to any variable starting with "left" or "right"
         // here, use the "build" and "probe" variables we set up for you.
         // Check out how SHJOperator implements this function if you feel stuck.
+        Map<DataBox, List<Record>> hashTable = new HashMap<>();
+
+        // building stage
+        for (Record buildRecord: buildRecords) {
+            DataBox buildJoinValue = buildRecord.getValue(buildColumnIndex);
+            if (!hashTable.containsKey(buildJoinValue)) {
+                hashTable.put(buildJoinValue, new ArrayList<>());
+            }
+            hashTable.get(buildJoinValue).add(buildRecord);
+        }
+
+        // probing stage
+        for (Record probeRecord: probeRecords) {
+            DataBox probeJoinValue = probeRecord.getValue(probeColumnIndex);
+            if (!hashTable.containsKey(probeJoinValue)) continue;
+            for (Record buildRecord : hashTable.get(probeJoinValue)) {
+                Record joinedRecord = buildRecord.concat(probeRecord);
+                this.joinedRecords.add(joinedRecord);
+            }
+        }
     }
 
     /**
@@ -123,6 +154,8 @@ public class GHJOperator extends JoinOperator {
     private void run(Iterable<Record> leftRecords, Iterable<Record> rightRecords, int pass) {
         assert pass >= 1;
         if (pass > 5) throw new IllegalStateException("Reached the max number of passes");
+
+        System.out.println(pass);
 
         // Create empty partitions
         Partition[] leftPartitions = createPartitions(true);
@@ -136,6 +169,15 @@ public class GHJOperator extends JoinOperator {
             // TODO(proj3_part1): implement the rest of grace hash join
             // If you meet the conditions to run the build and probe you should
             // do so immediately. Otherwise you should make a recursive call.
+            Partition leftPartition = leftPartitions[i];
+            for (int j = 0; j < rightPartitions.length; j++) {
+                Partition rightPartition = rightPartitions[j];
+                if (leftPartition.getNumPages() <= this.numBuffers - 2 || rightPartition.getNumPages() <= this.numBuffers - 2) {
+                    this.buildAndProbe(leftPartition, rightPartition);
+                } else {
+                    run(leftPartition, rightPartition, pass+1);
+                }
+            }
         }
     }
 
@@ -203,6 +245,16 @@ public class GHJOperator extends JoinOperator {
 
         // TODO(proj3_part1): populate leftRecords and rightRecords such that
         // SHJ breaks when trying to join them but not GHJ
+        int numBuffers = 6;
+        int recordsPerPage = 8;
+        // pages in partition <= numBuffers - 2
+        int maxPages = numBuffers - 2;
+        int numPartitions = numBuffers - 1;
+        for (int i = 0; i < (maxPages + 1) * numPartitions * recordsPerPage; i++) {
+            Record record = GHJOperator.createRecord(i);
+            leftRecords.add(record);
+            rightRecords.add(record);
+        }
         return new Pair<>(leftRecords, rightRecords);
     }
 
