@@ -88,6 +88,11 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextLeftBlock() {
             // TODO(proj3_part1): implement
+            if (this.leftSourceIterator.hasNext()) {
+                this.leftBlockIterator = getBlockIterator(this.leftSourceIterator, getLeftSource().getSchema(), numBuffers-2);
+                this.leftBlockIterator.markNext();
+                leftRecord = this.leftBlockIterator.next();
+            }
         }
 
         /**
@@ -103,6 +108,10 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextRightPage() {
             // TODO(proj3_part1): implement
+            if (this.rightSourceIterator.hasNext()) {
+                this.rightPageIterator = getBlockIterator(this.rightSourceIterator, getRightSource().getSchema(), 1);
+                this.rightPageIterator.markNext();
+            }
         }
 
         /**
@@ -115,7 +124,37 @@ public class BNLJOperator extends JoinOperator {
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            if (leftRecord == null)
+                return null;
+
+            while(true) {
+                if (this.rightPageIterator.hasNext()) {
+                    Record rightRecord = this.rightPageIterator.next();
+                    if (compare(leftRecord, rightRecord) == 0) {
+                        return leftRecord.concat(rightRecord);
+                    }
+                } else if (this.leftBlockIterator.hasNext()) {
+                    // right reaches the end of the page
+                    // advance left to the next record, reset right page
+                    leftRecord = this.leftBlockIterator.next();
+                    this.rightPageIterator.reset();
+                } else if (this.rightSourceIterator.hasNext()) {
+                    // left reaches the end of the block, right reaches the end of the page
+                    // reset left block, fetch next right page
+                    this.leftBlockIterator.reset();
+                    leftRecord = this.leftBlockIterator.next();
+                    this.fetchNextRightPage();
+                } else if (this.leftSourceIterator.hasNext()) {
+                    // left reaches the end of the block, right reaches the end of all records
+                    // fetch next left block, reset right source
+                    this.fetchNextLeftBlock();
+                    this.rightSourceIterator.reset();
+                    this.fetchNextRightPage();
+                } else {
+                    // no more record to fetch
+                    return null;
+                }
+            }
         }
 
         /**
