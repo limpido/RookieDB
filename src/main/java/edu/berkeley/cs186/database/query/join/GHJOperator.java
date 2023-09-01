@@ -155,7 +155,7 @@ public class GHJOperator extends JoinOperator {
         assert pass >= 1;
         if (pass > 5) throw new IllegalStateException("Reached the max number of passes");
 
-        System.out.println(pass);
+//        System.out.println(pass);
 
         // Create empty partitions
         Partition[] leftPartitions = createPartitions(true);
@@ -247,11 +247,11 @@ public class GHJOperator extends JoinOperator {
         // SHJ breaks when trying to join them but not GHJ
         int numBuffers = 6;
         int recordsPerPage = 8;
-        // pages in partition <= numBuffers - 2
-        int maxPages = numBuffers - 2;
+        // each partition must contain num of pages <= numBuffers - 2
+        int pagePerPartition = numBuffers - 2;
         int numPartitions = numBuffers - 1;
-        for (int i = 0; i < (maxPages + 1) * numPartitions * recordsPerPage; i++) {
-            Record record = GHJOperator.createRecord(i);
+        for (int i = 0; i < pagePerPartition * numPartitions * recordsPerPage + 1; i++) {
+            Record record = createRecord(i);
             leftRecords.add(record);
             rightRecords.add(record);
         }
@@ -275,7 +275,20 @@ public class GHJOperator extends JoinOperator {
         ArrayList<Record> leftRecords = new ArrayList<>();
         ArrayList<Record> rightRecords = new ArrayList<>();
         // TODO(proj3_part1): populate leftRecords and rightRecords such that GHJ breaks
+        int numBuffers = 6;
+        int recordsPerPage = 8;
+        // each partition must contain num of pages <= numBuffers - 2
+        int pagePerPartition = numBuffers - 2;
 
+        // let all the records be the same
+        // so that there is always only one partition after hashing
+        // since the records cannot fit into the buffer
+        // the partition has to continue until the max pass is exceeded and GHJ fails
+        for (int i = 0; i < pagePerPartition * recordsPerPage + 1; i++) {
+            Record record = createRecord(0);
+            leftRecords.add(record);
+            rightRecords.add(record);
+        }
         return new Pair<>(leftRecords, rightRecords);
     }
 }
