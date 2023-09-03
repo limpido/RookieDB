@@ -134,13 +134,54 @@ public class SortMergeOperator extends JoinOperator {
             return nextRecord;
         }
 
+        private void fetchNextRightRecord() {
+            if (rightIterator.hasNext())
+                rightRecord = rightIterator.next();
+            else rightRecord = null;
+        }
+
+        private void fetchNextLeftRecord() {
+            if (leftIterator.hasNext())
+                leftRecord = leftIterator.next();
+            else leftRecord = null;
+        }
+
         /**
          * Returns the next record that should be yielded from this join,
          * or null if there are no more records to join.
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            while (true) {
+                if (this.marked) {
+                    this.fetchNextRightRecord();
+                    if (rightRecord == null) {
+                        this.marked = false;
+                        rightIterator.reset();
+                        this.fetchNextRightRecord();
+                        this.fetchNextLeftRecord();
+                    }
+                }
+                if (leftRecord == null || rightRecord == null)
+                    return null;
+                if (compare(leftRecord, rightRecord) == 0) {
+                    if (!this.marked) {
+                        this.marked = true;
+                        rightIterator.markPrev();
+                    }
+                    return leftRecord.concat(rightRecord);
+                } else if (compare(leftRecord, rightRecord) < 0) {
+                    // left < right: advance left
+                    if (this.marked) {
+                        this.marked = false;
+                        rightIterator.reset();
+                        this.fetchNextRightRecord();
+                    }
+                    this.fetchNextLeftRecord();
+                } else if (compare(leftRecord, rightRecord) > 0) {
+                    this.fetchNextRightRecord();
+                }
+            }
         }
 
         @Override
