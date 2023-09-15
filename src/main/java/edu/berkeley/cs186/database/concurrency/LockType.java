@@ -93,7 +93,7 @@ public enum LockType {
         substitutes.put(X, new ArrayList<>(Arrays.asList(X)));
         substitutes.put(IS, new ArrayList<>(Arrays.asList(IS, IX)));
         substitutes.put(IX, new ArrayList<>(Arrays.asList(IX, SIX)));
-        substitutes.put(SIX, new ArrayList<>(Arrays.asList(S, IX, SIX)));
+        substitutes.put(SIX, new ArrayList<>(Arrays.asList(S, IS, IX, SIX)));
         substitutes.put(NL, new ArrayList<>(Arrays.asList(NL)));
 
         return substitutes.get(required).contains(substitute);
