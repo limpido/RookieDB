@@ -1,8 +1,8 @@
 package edu.berkeley.cs186.database.concurrency;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 
 /**
  * Utility methods to track the relationships between different lock types.
@@ -27,12 +27,12 @@ public enum LockType {
         }
         // TODO(proj4_part1): implement
         HashMap<LockType, ArrayList<LockType>> compatible = new HashMap<>();
-        compatible.put(S, new ArrayList<>(List.of(S, IS, NL)));
-        compatible.put(X, new ArrayList<>(List.of(NL)));
-        compatible.put(IS, new ArrayList<>(List.of(S, IS, IX, SIX, NL)));
-        compatible.put(IX, new ArrayList<>(List.of(IS, IX, NL)));
-        compatible.put(SIX, new ArrayList<>(List.of(IS, NL)));
-        compatible.put(NL, new ArrayList<>(List.of(S, X, IS, IX, SIX, NL)));
+        compatible.put(S, new ArrayList<>(Arrays.asList(S, IS, NL)));
+        compatible.put(X, new ArrayList<>(Arrays.asList(NL)));
+        compatible.put(IS, new ArrayList<>(Arrays.asList(S, IS, IX, SIX, NL)));
+        compatible.put(IX, new ArrayList<>(Arrays.asList(IS, IX, NL)));
+        compatible.put(SIX, new ArrayList<>(Arrays.asList(IS, NL)));
+        compatible.put(NL, new ArrayList<>(Arrays.asList(S, X, IS, IX, SIX, NL)));
 
         return compatible.get(a).contains(b);
     }
@@ -66,12 +66,12 @@ public enum LockType {
         }
         // TODO(proj4_part1): implement
         HashMap<LockType, ArrayList<LockType>> grantedChildren = new HashMap<>();
-        grantedChildren.put(S, new ArrayList<>(List.of(S, IS, NL)));
-        grantedChildren.put(X, new ArrayList<>(List.of(NL)));
-        grantedChildren.put(IS, new ArrayList<>(List.of(S, IS, NL)));
-        grantedChildren.put(IX, new ArrayList<>(List.of(S, X, IS, IX, SIX, NL)));
-        grantedChildren.put(SIX, new ArrayList<>(List.of(X, IX, NL)));
-        grantedChildren.put(NL, new ArrayList<>(List.of(S, X, IS, IX, SIX, NL)));
+        grantedChildren.put(S, new ArrayList<>(Arrays.asList(S, IS, NL)));
+        grantedChildren.put(X, new ArrayList<>(Arrays.asList(NL)));
+        grantedChildren.put(IS, new ArrayList<>(Arrays.asList(S, IS, NL)));
+        grantedChildren.put(IX, new ArrayList<>(Arrays.asList(S, X, IS, IX, SIX, NL)));
+        grantedChildren.put(SIX, new ArrayList<>(Arrays.asList(X, IX, NL)));
+        grantedChildren.put(NL, new ArrayList<>(Arrays.asList(NL)));
 
         return grantedChildren.get(parentLockType).contains(childLockType);
     }
@@ -89,12 +89,12 @@ public enum LockType {
         // TODO(proj4_part1): implement
         // can `substitute` substitute `required`?
         HashMap<LockType, ArrayList<LockType>> substitutes = new HashMap<>();
-        substitutes.put(S, new ArrayList<>(List.of(S, X, SIX)));
-        substitutes.put(X, new ArrayList<>(List.of(X)));
-        substitutes.put(IS, new ArrayList<>(List.of(IS, IX)));
-        substitutes.put(IX, new ArrayList<>(List.of(IX, SIX)));
-        substitutes.put(SIX, new ArrayList<>(List.of(S, IX, SIX)));
-        substitutes.put(NL, new ArrayList<>(List.of(NL)));
+        substitutes.put(S, new ArrayList<>(Arrays.asList(S, X, SIX)));
+        substitutes.put(X, new ArrayList<>(Arrays.asList(X)));
+        substitutes.put(IS, new ArrayList<>(Arrays.asList(IS, IX)));
+        substitutes.put(IX, new ArrayList<>(Arrays.asList(IX, SIX)));
+        substitutes.put(SIX, new ArrayList<>(Arrays.asList(S, IX, SIX)));
+        substitutes.put(NL, new ArrayList<>(Arrays.asList(NL)));
 
         return substitutes.get(required).contains(substitute);
     }
