@@ -590,7 +590,107 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // Set of transactions that have completed
         Set<Long> endedTransactions = new HashSet<>();
         // TODO(proj5): implement
-        return;
+        Iterator<LogRecord> iter = logManager.scanFrom(LSN);
+        while (iter.hasNext()) {
+            LogRecord curRecord = iter.next();
+            LogType logType = curRecord.getType();
+
+            // log record for transaction operations
+            if (curRecord.getTransNum().isPresent()) {
+                long transNum = curRecord.getTransNum().get();
+                if (logType == LogType.END_TRANSACTION) {
+                    if (transactionTable.containsKey(transNum)) {
+                        // clean up transaction
+                        transactionTable.get(transNum).transaction.cleanup();
+                        // set status to COMPLETE
+                        transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMPLETE);
+                        // remove from txn table
+                        transactionTable.remove(transNum);
+                    }
+                    // add to endedTransactions
+                    endedTransactions.add(transNum);
+                } else {
+                    // add the transaction to transaction table
+                    if (!transactionTable.containsKey(transNum))
+                        startTransaction(newTransaction.apply(transNum));
+                    transactionTable.get(curRecord.getTransNum().get()).lastLSN = curRecord.getLSN();
+                    // update transaction status for COMMIT and ABORT
+                    if (logType == LogType.COMMIT_TRANSACTION) {
+                        transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMMITTING);
+                    } else if (logType == LogType.ABORT_TRANSACTION) {
+                        transactionTable.get(transNum).transaction.setStatus(Transaction.Status.RECOVERY_ABORTING);
+                    }
+                }
+            }
+
+            // log record for page operations
+            if (curRecord.getPageNum().isPresent()) {
+                long pageNum = curRecord.getPageNum().get();
+                if (logType == LogType.UPDATE_PAGE || logType == LogType.UNDO_UPDATE_PAGE) {
+                    // update/undoupdate page will dirty pages
+                    dirtyPageTable.putIfAbsent(pageNum, curRecord.getLSN());
+                } else if (logType == LogType.FREE_PAGE || logType == LogType.UNDO_ALLOC_PAGE) {
+                    // free/undoalloc page always flush changes to disk
+                    if (dirtyPageTable.containsKey(pageNum))
+                        dirtyPageTable.remove(pageNum);
+                }
+                // no action needed for alloc/undofree page
+            }
+
+            // END_CHECKPOINT log record
+            if (logType == LogType.END_CHECKPOINT) {
+                // copy to in-memory DPT
+                dirtyPageTable.putAll(curRecord.getDirtyPageTable());
+                // update in-memory transaction table
+                Map<Long, Pair<Transaction.Status, Long>> ttable = curRecord.getTransactionTable();
+                for (Map.Entry<Long, Pair<Transaction.Status, Long>> entry: ttable.entrySet()) {
+                    long transNum = entry.getKey();
+                    // skip if the transaction is already complete
+                    if (endedTransactions.contains(transNum)) continue;
+                    // add to transaction table if not exist
+                    if (!transactionTable.containsKey(transNum)) {
+                        startTransaction(newTransaction.apply(transNum));
+                    } else {
+                        // update lastLSN
+                        long cktLastLSN = entry.getValue().getSecond();
+                        if (cktLastLSN >= transactionTable.get(transNum).lastLSN) {
+                            transactionTable.get(transNum).lastLSN = cktLastLSN;
+                        }
+                        // update transaction status: running -> committing / aborting -> complete
+                        Transaction.Status cktStatus = entry.getValue().getFirst();
+                        Transaction.Status status = transactionTable.get(transNum).transaction.getStatus();
+                        if (status == Transaction.Status.RUNNING) {
+                            if (cktStatus == Transaction.Status.ABORTING)
+                                transactionTable.get(transNum).transaction.setStatus(Transaction.Status.RECOVERY_ABORTING);
+                            else if (cktStatus == Transaction.Status.COMMITTING)
+                                transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMMITTING);
+                        }
+                        if (cktStatus == Transaction.Status.COMPLETE)
+                            transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMPLETE);
+                    }
+                }
+            }
+
+        }
+
+        for (Map.Entry<Long, TransactionTableEntry> entry : transactionTable.entrySet()) {
+            Transaction transaction = entry.getValue().transaction;
+            if (transaction.getStatus() == Transaction.Status.COMMITTING) {
+                // clean up the transaction
+                transaction.cleanup();
+                // change status to COMPLETE
+                transaction.setStatus(Transaction.Status.COMPLETE);
+                // append an end record, remove from the transaction table
+                LogRecord endRecord = new EndTransactionLogRecord(transaction.getTransNum(), entry.getValue().lastLSN);
+                logManager.appendToLog(endRecord);
+                transactionTable.remove(transaction.getTransNum());
+            } else if (transaction.getStatus() == Transaction.Status.RUNNING) {
+                // change status to RECOVERY_ABORTING, append an abort record
+                transaction.setStatus(Transaction.Status.RECOVERY_ABORTING);
+                LogRecord abortRecord = new AbortTransactionLogRecord(transaction.getTransNum(), entry.getValue().lastLSN);
+                entry.getValue().lastLSN = logManager.appendToLog(abortRecord);
+            }
+        }
     }
 
     /**
