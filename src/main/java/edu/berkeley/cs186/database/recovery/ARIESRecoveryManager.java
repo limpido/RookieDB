@@ -705,7 +705,48 @@ public class ARIESRecoveryManager implements RecoveryManager {
      */
     void restartRedo() {
         // TODO(proj5): implement
-        return;
+        // determine the starting point for REDO (lowest recLSN in the DPT)
+        Long startLSN = null;
+        for (Map.Entry<Long, Long> entry : dirtyPageTable.entrySet()) {
+            long LSN = entry.getValue();
+            if (startLSN == null)
+                startLSN = LSN;
+            else startLSN = Math.min(startLSN, LSN);
+        }
+
+        if (startLSN == null)
+            return;
+
+        Iterator<LogRecord> iter = logManager.scanFrom(startLSN);
+        while (iter.hasNext()) {
+            LogRecord record = iter.next();
+            LogType logType = record.getType();
+            if (record.getPageNum().isPresent()) {  // for pages
+                long pageNum = record.getPageNum().get();
+                // for records that modifies a page
+                if (logType == LogType.UPDATE_PAGE || logType == LogType.UNDO_UPDATE_PAGE || logType == LogType.UNDO_ALLOC_PAGE || logType == LogType.FREE_PAGE) {
+                    // check if page is in DPT
+                    if (!dirtyPageTable.containsKey(pageNum))
+                        continue;
+                    // check LSN >= recLSN
+                    if (record.getLSN() < dirtyPageTable.get(pageNum))
+                        continue;
+                    // check pageLSN < LSN
+                    Page page = bufferManager.fetchPage(new DummyLockContext(), pageNum);
+                    try {
+                        if (record.getLSN() <= page.getPageLSN())
+                            continue;
+                    } finally {
+                        page.unpin();
+                    }
+                }
+                if (record.isRedoable())
+                    record.redo(this, this.diskSpaceManager, this.bufferManager);
+            } else if (record.getPartNum().isPresent()) { // for partitions
+                if (record.isRedoable())
+                    record.redo(this, this.diskSpaceManager, this.bufferManager);
+            }
+        }
     }
 
     /**
