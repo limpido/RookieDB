@@ -720,16 +720,16 @@ public class ARIESRecoveryManager implements RecoveryManager {
         Iterator<LogRecord> iter = logManager.scanFrom(startLSN);
         while (iter.hasNext()) {
             LogRecord record = iter.next();
+            if (!record.isRedoable())
+                continue;
+
             LogType logType = record.getType();
             if (record.getPageNum().isPresent()) {  // for pages
                 long pageNum = record.getPageNum().get();
                 // for records that modifies a page
                 if (logType == LogType.UPDATE_PAGE || logType == LogType.UNDO_UPDATE_PAGE || logType == LogType.UNDO_ALLOC_PAGE || logType == LogType.FREE_PAGE) {
-                    // check if page is in DPT
-                    if (!dirtyPageTable.containsKey(pageNum))
-                        continue;
-                    // check LSN >= recLSN
-                    if (record.getLSN() < dirtyPageTable.get(pageNum))
+                    // check if page is in DPT and LSN >= recLSN
+                    if (!dirtyPageTable.containsKey(pageNum) || record.getLSN() < dirtyPageTable.get(pageNum))
                         continue;
                     // check pageLSN < LSN
                     Page page = bufferManager.fetchPage(new DummyLockContext(), pageNum);
@@ -740,11 +740,9 @@ public class ARIESRecoveryManager implements RecoveryManager {
                         page.unpin();
                     }
                 }
-                if (record.isRedoable())
-                    record.redo(this, this.diskSpaceManager, this.bufferManager);
+                record.redo(this, diskSpaceManager, bufferManager);
             } else if (record.getPartNum().isPresent()) { // for partitions
-                if (record.isRedoable())
-                    record.redo(this, this.diskSpaceManager, this.bufferManager);
+                record.redo(this, diskSpaceManager, bufferManager);
             }
         }
     }
@@ -764,7 +762,36 @@ public class ARIESRecoveryManager implements RecoveryManager {
      */
     void restartUndo() {
         // TODO(proj5): implement
-        return;
+        PriorityQueue<Pair<Long, Long>> queue = new PriorityQueue<>(new PairFirstReverseComparator<>());
+        for (Map.Entry<Long, TransactionTableEntry> entry : transactionTable.entrySet()) {
+            queue.add(new Pair<>(entry.getValue().lastLSN, entry.getKey()));
+        }
+
+        while (!queue.isEmpty()) {
+            Pair<Long, Long> pair = queue.poll();
+            long lastLSN = pair.getFirst();
+            long transNum = pair.getSecond();
+            TransactionTableEntry transactionEntry = transactionTable.get(transNum);
+            LogRecord record = logManager.fetchLogRecord(lastLSN);
+
+            if (record.isUndoable()) {
+                LogRecord clr = record.undo(transactionEntry.lastLSN);
+                transactionEntry.lastLSN = logManager.appendToLog(clr);
+                clr.redo(this, diskSpaceManager, bufferManager);
+            }
+
+            lastLSN = record.getUndoNextLSN().orElse(record.getPrevLSN().orElse(0L));
+            if (lastLSN == 0L) {
+                // clean up the transaction, set status to complete, remove from the transaction table
+                transactionEntry.transaction.cleanup();
+                transactionEntry.transaction.setStatus(Transaction.Status.COMPLETE);
+                LogRecord endRecord = new EndTransactionLogRecord(transNum, transactionEntry.lastLSN);
+                logManager.appendToLog(endRecord);
+                transactionTable.remove(transNum);
+            } else {
+                queue.add(new Pair<>(lastLSN, transNum));
+            }
+        }
     }
 
     /**
