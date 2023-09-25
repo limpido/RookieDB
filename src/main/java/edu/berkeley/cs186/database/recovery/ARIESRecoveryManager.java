@@ -7,7 +7,6 @@ import edu.berkeley.cs186.database.io.DiskSpaceManager;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.memory.Page;
 import edu.berkeley.cs186.database.recovery.records.*;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -647,27 +646,26 @@ public class ARIESRecoveryManager implements RecoveryManager {
                     long transNum = entry.getKey();
                     // skip if the transaction is already complete
                     if (endedTransactions.contains(transNum)) continue;
-                    // add to transaction table if not exist
                     if (!transactionTable.containsKey(transNum)) {
+                        // add to transaction table if not exist
                         startTransaction(newTransaction.apply(transNum));
-                    } else {
-                        // update lastLSN
-                        long cktLastLSN = entry.getValue().getSecond();
-                        if (cktLastLSN >= transactionTable.get(transNum).lastLSN) {
-                            transactionTable.get(transNum).lastLSN = cktLastLSN;
-                        }
-                        // update transaction status: running -> committing / aborting -> complete
-                        Transaction.Status cktStatus = entry.getValue().getFirst();
-                        Transaction.Status status = transactionTable.get(transNum).transaction.getStatus();
-                        if (status == Transaction.Status.RUNNING) {
-                            if (cktStatus == Transaction.Status.ABORTING)
-                                transactionTable.get(transNum).transaction.setStatus(Transaction.Status.RECOVERY_ABORTING);
-                            else if (cktStatus == Transaction.Status.COMMITTING)
-                                transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMMITTING);
-                        }
-                        if (cktStatus == Transaction.Status.COMPLETE)
-                            transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMPLETE);
                     }
+                    // update lastLSN
+                    long cktLastLSN = entry.getValue().getSecond();
+                    if (cktLastLSN >= transactionTable.get(transNum).lastLSN) {
+                        transactionTable.get(transNum).lastLSN = cktLastLSN;
+                    }
+                    // update transaction status: running -> committing / aborting -> complete
+                    Transaction.Status cktStatus = entry.getValue().getFirst();
+                    Transaction.Status status = transactionTable.get(transNum).transaction.getStatus();
+                    if (status == Transaction.Status.RUNNING) {
+                        if (cktStatus == Transaction.Status.ABORTING)
+                            transactionTable.get(transNum).transaction.setStatus(Transaction.Status.RECOVERY_ABORTING);
+                        else if (cktStatus == Transaction.Status.COMMITTING)
+                            transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMMITTING);
+                    }
+                    if (cktStatus == Transaction.Status.COMPLETE)
+                        transactionTable.get(transNum).transaction.setStatus(Transaction.Status.COMPLETE);
                 }
             }
 
